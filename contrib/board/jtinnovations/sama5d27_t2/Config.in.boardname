@@ -1,0 +1,2 @@
+config BOARDNAME
+	default "sama5d27_t2" if SAMA5D27_T2
