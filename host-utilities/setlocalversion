@@ -9,8 +9,8 @@
 
 usage() {
 	echo "Usage: $0 [--save-scmversion] [srctree]" >&2
-	exit 1
-}
+  exit 1
+  }
 
 scm_only=false
 srctree=.
