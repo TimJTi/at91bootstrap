@@ -164,14 +164,16 @@ _go:
 	ldr 	r1, =MACH_TYPE
 	mov     lr, pc
 
-/* we endless loop here and not jump to any application
- * if we are configured to not load anything
- */
-#if defined(CONFIG_ENTER_NWD) || !defined(CONFIG_JUMP_TO_SW)
-loop:
+/* Notifiy the debugger by setting a breakpoint */
 #ifdef CONFIG_BKPT_NOTIFY_DONE
 	bkpt
 #endif
+
+/* we endless loop here and not jump to any application
+ * if we are configured to not load anything
+ */
+#if defined(CONFIG_ENTER_NWD)
+loop:
 	b	loop
 #endif
 
@@ -288,6 +290,12 @@ cp15_dcache_invalidate_setway:
 	.type	cp15_dcache_clean_setway, %function
 cp15_dcache_clean_setway:
 	mcr	p15, 0, r0, c7, c10, 2
+	bx	lr
+
+	.global cp15_dcache_invalidate_mva
+	.type	cp15_dcache_invalidate_mva, %function
+cp15_dcache_invalidate_mva:
+	mcr	p15, 0, r0, c7, c6, 1
 	bx	lr
 
 	.global dsb

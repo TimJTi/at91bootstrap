@@ -6,9 +6,16 @@
 #include "hardware.h"
 #include "board.h"
 #include "arch/at91_pio.h"
-#include "arch/at91_smc.h"
-#include "gpio.h"
 
+#if defined(CONFIG_SAMA5D2) || defined(CONFIG_SAMA5D3) ||\
+    defined(CONFIG_SAMA5D4) || defined(CONFIG_SAMA7G5) ||\
+    defined(CONFIG_SAMA7D65)
+#include "arch/sama5_smc.h"
+#else
+#include "arch/at91_smc.h"
+#endif
+#include "gpio.h"
+#include "arch/at91_nand_ecc.h"
 #include "debug.h"
 
 #include "nand.h"
@@ -17,6 +24,12 @@
 #include "timer.h"
 #include "fdt.h"
 #include "div.h"
+#ifdef CONFIG_NAND_DMA_SUPPORT
+#include "xdmac.h"
+#endif
+#ifdef CONFIG_FAST_BOOT
+#include "fast_boot.h"
+#endif
 
 #ifdef CONFIG_NANDFLASH_SMALL_BLOCKS
 static struct nand_chip nand_ids[] = {
@@ -51,6 +64,214 @@ static struct nand_chip nand_ids[] = {
 	{0,}
 };
 #endif
+
+static const struct nand_timing nand_onfi_timings[] = {
+	/* Mode 0 */
+	{
+		.tCS = 70000,
+		.tRC = 100000,
+		.tREH = 30000,
+		.tRHOH = 0,
+		.tRP = 50000,
+		.tWC = 100000,
+		.tWH = 30000,
+		.tWP = 50000,
+		.tRHZ = 200000,
+		.tCLR = 20000,
+		.tADL = 400000,
+		.tAR = 25000,
+		.tREA = 40000,
+		.tRR = 40000,
+		.tWB = 200000,
+	},
+	/* Mode 1 */
+	{
+		.tCS = 35000,
+		.tRC = 50000,
+		.tREH = 15000,
+		.tRHOH = 15000,
+		.tRP = 25000,
+		.tWC = 45000,
+		.tWH = 15000,
+		.tWP = 25000,
+		.tRHZ = 100000,
+		.tCLR = 10000,
+		.tADL = 400000,
+		.tAR = 10000,
+		.tREA = 30000,
+		.tRR = 20000,
+		.tWB = 100000,
+	},
+	/* Mode 2 */
+	{
+		.tCS = 25000,
+		.tRC = 35000,
+		.tREH = 15000,
+		.tRHOH = 15000,
+		.tRP = 17000,
+		.tWC = 35000,
+		.tWH = 15000,
+		.tWP = 17000,
+		.tRHZ = 100000,
+		.tCLR = 10000,
+		.tADL = 400000,
+		.tAR = 10000,
+		.tREA = 25000,
+		.tRR = 20000,
+		.tWB = 100000,
+	},
+	/* Mode 3 */
+	{
+		.tCS = 25000,
+		.tRC = 30000,
+		.tREH = 10000,
+		.tRHOH = 15000,
+		.tRP = 15000,
+		.tWC = 30000,
+		.tWH = 10000,
+		.tWP = 15000,
+		.tRHZ = 100000,
+		.tCLR = 10000,
+		.tADL = 400000,
+		.tAR = 10000,
+		.tREA = 20000,
+		.tRR = 20000,
+		.tWB = 100000,
+	},
+};
+
+#define DIV_ROUND_UP(x, y)	div(((x) + (y) - 1),(y))
+#if defined(CONFIG_SAMA5D2) || defined(CONFIG_SAMA5D3) ||\
+    defined(CONFIG_SAMA5D4) || defined(CONFIG_SAMA7G5) ||\
+    defined(CONFIG_SAMA7D65)
+static unsigned int smc_timing_encode_ncycles(unsigned int ncycles)
+{
+	unsigned int msb, lsb;
+
+	msb = div(ncycles , 0x40);
+	lsb = ncycles % 0x40;
+	if (lsb > 0x07) {
+		lsb = 0;
+		msb++;
+	}
+	if (msb > 0x01) {
+		msb = 0x01;
+		lsb = 0x07;
+	}
+	return (msb << 3) | lsb;
+}
+#endif
+
+void nandflash_smc_conf(unsigned int mode, unsigned int cs)
+{
+	unsigned int ncycles, mck_ps, pulse;
+	unsigned int nwe_setup, nwe_pulse, nwe_hold, nwe_cycle;
+	unsigned int nrd_hold, nrd_pulse, nrd_cycle, tdf;
+	mck_ps = (1000000000 / MASTER_CLOCK) * 1000;
+	/* 
+	  Set write pulse length
+	  NWE_PULSE = tWP 
+	*/
+	nwe_pulse = DIV_ROUND_UP(nand_onfi_timings[mode].tWP, mck_ps);
+	ncycles = nwe_pulse;
+	/* 
+	  set write setup time
+	  NWE_SETUP = tCS - NWE_PULSE 
+	*/
+	nwe_setup = DIV_ROUND_UP(nand_onfi_timings[mode].tCS, mck_ps);
+	nwe_setup = nwe_setup > ncycles ? nwe_setup - ncycles : 0;
+	ncycles += nwe_setup;
+	/* NWE_HOLD = tWH */
+	nwe_hold = DIV_ROUND_UP(nand_onfi_timings[mode].tWH, mck_ps);
+	ncycles += nwe_hold;
+	/* 
+	   Set write cycle.
+	   NWE_CYCLE = max(tWC, NWE_SETUP + NWE_PULSE + NWE_HOLD) 
+	*/
+	nwe_cycle = DIV_ROUND_UP(nand_onfi_timings[mode].tWC, mck_ps);
+	nwe_cycle = max(ncycles, nwe_cycle);
+	/* NRD_HOLD = max(tREH, tRHOH) */
+	nrd_hold = max(nand_onfi_timings[mode].tREH, nand_onfi_timings[mode].tRHOH);
+	nrd_hold = DIV_ROUND_UP(nrd_hold, mck_ps);
+	ncycles = nrd_hold;
+	/*
+	 * TDF = tRHZ - NRD_HOLD
+	 */
+	tdf = DIV_ROUND_UP(nand_onfi_timings[mode].tRHZ, mck_ps);
+	tdf -= nrd_hold;
+	
+	if (tdf > AT91C_SMC_TDF_MAX)
+		tdf = AT91C_SMC_TDF_MAX;
+	else if (tdf < AT91C_SMC_TDF_MIN)
+		tdf = AT91C_SMC_TDF_MIN;
+	tdf = tdf - 1;
+
+	/* 
+	  set NRD pulse length
+	  NRD_PULSE = max(tRP , tREA)
+	*/
+	if (mode == TIMING_MODE_3)
+		pulse = max(nand_onfi_timings[mode].tRP, nand_onfi_timings[mode].tREA);
+	else
+		pulse = nand_onfi_timings[mode].tRP;
+	nrd_pulse = DIV_ROUND_UP(pulse, mck_ps);
+	ncycles += nrd_pulse;
+
+	/*
+	  set read cycle.
+	  NRD_CYCLE = max(tRC, NRD_PULSE + NRD_HOLD) 
+	*/
+	nrd_cycle = DIV_ROUND_UP(nand_onfi_timings[mode].tRC, mck_ps);
+	nrd_cycle = max(ncycles, nrd_cycle);
+
+	/* NCS_RD_PULSE = NRD_CYCLE */
+#if defined(CONFIG_SAMA5D2) || defined(CONFIG_SAMA5D3) ||\
+    defined(CONFIG_SAMA5D4) || defined(CONFIG_SAMA7G5) ||\
+    defined(CONFIG_SAMA7D65)
+	writel(AT91C_SMC_SETUP_NWE(nwe_setup), ATMEL_BASE_SMC + SMC_SETUP(cs));
+	writel(AT91C_SMC_PULSE_NWE(nwe_pulse) |
+		       AT91C_SMC_PULSE_NCS_WR(nwe_cycle) |
+		       AT91C_SMC_PULSE_NRD(nrd_pulse) |
+		       AT91C_SMC_PULSE_NCS_RD(nrd_cycle),
+		       ATMEL_BASE_SMC + SMC_PULSE(cs));
+	writel(AT91C_SMC_CYCLE_NWE(nwe_cycle) |
+		       AT91C_SMC_CYCLE_NRD(nrd_cycle),
+		       ATMEL_BASE_SMC + SMC_CYCLE(cs));
+	writel(AT91C_SMC_MODE_READMODE_NRD_CTRL |
+		       AT91C_SMC_MODE_WRITEMODE_NWE_CTRL |
+		       AT91C_SMC_MODE_TDF_MODE |
+		       AT91C_SMC_MODE_TDF_CYCLES(tdf),
+		       ATMEL_BASE_SMC + SMC_MODE(cs));
+		       
+	writel(AT91C_SMC_TIMINGS_TCLR(smc_timing_encode_ncycles(
+		       DIV_ROUND_UP(nand_onfi_timings[mode].tCLR, mck_ps))) |
+		       AT91C_SMC_TIMINGS_TADL(smc_timing_encode_ncycles(
+		       DIV_ROUND_UP(nand_onfi_timings[mode].tADL, mck_ps))) |
+		       AT91C_SMC_TIMINGS_TAR(smc_timing_encode_ncycles(
+		       DIV_ROUND_UP(nand_onfi_timings[mode].tAR, mck_ps)))|
+		       AT91C_SMC_TIMINGS_TRR(smc_timing_encode_ncycles(
+		       DIV_ROUND_UP(nand_onfi_timings[mode].tRR, mck_ps))) |
+		       AT91C_SMC_TIMINGS_TWB(smc_timing_encode_ncycles(
+		       DIV_ROUND_UP(nand_onfi_timings[mode].tWB, mck_ps))) |
+		       AT91C_SMC_TIMINGS_NFSEL,
+		       ATMEL_BASE_SMC + SMC_TIMINGS(cs));
+#else
+	writel(AT91C_SMC_NWESETUP_(nwe_setup), AT91C_BASE_SMC + SMC_SETUP(cs));
+	writel(AT91C_SMC_NWEPULSE_(nwe_pulse) |
+		       AT91C_SMC_NCS_WRPULSE_(nwe_cycle) |
+		       AT91C_SMC_NRDPULSE_(nrd_pulse) |
+		       AT91C_SMC_NCS_RDPULSE_(nrd_cycle),
+		       AT91C_BASE_SMC + SMC_PULSE(cs));
+	writel(AT91C_SMC_NWECYCLE_(nwe_cycle) |
+		       AT91C_SMC_NRDCYCLE_(nrd_cycle),
+		       AT91C_BASE_SMC + SMC_CYCLE(cs));
+	writel(AT91C_SMC_READMODE |
+		       AT91C_SMC_WRITEMODE |
+		       AT91C_SMC_TDFEN |
+		       AT91_SMC_TDF_(tdf),
+		       AT91C_BASE_SMC + SMC_MODE(cs));
+#endif
+}
 
 /* ooblayout */
 static struct nand_ooblayout nand_oob_layout;
@@ -87,6 +308,13 @@ static __attribute__((unused)) void write_byte(unsigned char data)
 {
 	writeb(data, (unsigned long)CONFIG_SYS_NAND_BASE);
 }
+
+#ifdef CONFIG_FAST_BOOT
+static void write_word(unsigned short data)
+{
+	writew(data, (unsigned long)CONFIG_SYS_NAND_BASE);
+}
+#endif
 
 /* 16 bits devices */
 static void nand_command16(unsigned char cmd)
@@ -744,6 +972,45 @@ static int nand_read_status(void)
 	return 0;
 }
 
+#ifdef CONFIG_NAND_DMA_SUPPORT
+static int nand_access_with_dma(unsigned char *buffer,
+			unsigned int len, int read)
+{
+	struct xdmac_hwcfg hwcfg;
+	struct xdmac_cfg cfg;
+	struct xdmac_transfer_cfg transfer_cfg;
+	int ret;
+
+	hwcfg.pid = 0xFF;
+	hwcfg.cid = 0;
+	hwcfg.src_is_periph = 0;
+	hwcfg.dst_is_periph = 0;
+	cfg.data_width = DMA_DATA_WIDTH_BYTE;
+	cfg.chunk_size = DMA_CHUNK_SIZE_1;
+	cfg.burst_size = DMA_MEM_BURST_16;
+	cfg.incr_saddr = 1;
+	cfg.incr_daddr = 1;
+	ret = xdmac_configure_transfer(&hwcfg, &cfg);
+	if (ret)
+		goto dma_stop;
+	if (read) {
+		transfer_cfg.saddr = (void *)CONFIG_SYS_NAND_BASE;
+		transfer_cfg.daddr = (void *)buffer;
+	} else {
+		transfer_cfg.saddr = (void *)buffer;
+		transfer_cfg.daddr = (void *)CONFIG_SYS_NAND_BASE;
+	}
+	transfer_cfg.len = len;
+	ret = xdmac_transfer_start(&hwcfg, &transfer_cfg);
+	if (ret)
+		goto dma_stop;
+	ret = xdmac_transfer_wait_for_completion(&hwcfg);
+dma_stop:
+	xdmac_transfer_stop(&hwcfg);
+	return ret;
+}
+#endif
+
 #ifdef CONFIG_NANDFLASH_SMALL_BLOCKS
 static int nand_read_sector(struct nand_info *nand, 
 			unsigned int row_address,
@@ -818,15 +1085,16 @@ static int nand_read_sector(struct nand_info *nand,
 	unsigned int column_address;
 	int ret = 0;
 	unsigned char *pbuf = buffer;
+	unsigned char oob[NAND_MAX_PAGE_SPARE_SIZE];
+	unsigned char *poob;
 
+	poob = oob;
 #ifdef CONFIG_USE_PMECC
 	unsigned int usepmecc = 0;
 
 	if ((zone_flag & ZONE_DATA) == ZONE_DATA) {
 		usepmecc = 1;
 		zone_flag = ZONE_DATA | ZONE_INFO;
-
-		pmecc_enable();
 	}
 #endif	/* #ifdef CONFIG_USE_PMECC */
 
@@ -838,7 +1106,6 @@ static int nand_read_sector(struct nand_info *nand,
 
 	case ZONE_INFO:
 		readbytes = nand->oobsize;
-		pbuf += nand->pagesize;
 		column_address = nand->pagesize;
 		break;
 
@@ -864,24 +1131,46 @@ static int nand_read_sector(struct nand_info *nand,
 		return -1;
 
 	nand->command(CMD_READ_1);
-
-#ifdef CONFIG_USE_PMECC
-	if (usepmecc)
-		pmecc_start_data_phase();
-#endif
+	pmecc_enable(0);
 	/* Read loop */
 	if (nand->buswidth) {
-		for (i = 0; i < readbytes / 2; i++) {
-			*((short *)pbuf) = read_word();
-			pbuf += 2;
+		if (readbytes >= nand->pagesize) {
+			for (i = 0; i < nand->pagesize / 2; i++) {
+				*((short *)pbuf) = read_word();
+				pbuf += 2;
+			}
+			for (i = 0; i < nand->oobsize / 2; i++) {
+				*((short *)poob) = read_word();
+				poob += 2;
+			}
+		} else {
+			for (i = 0; i < readbytes / 2; i++) {
+				*((short *)pbuf) = read_word();
+				pbuf += 2;
+			}
 		}
 	} else {
-		for (i = 0; i < readbytes; i++)
-			*pbuf++ = read_byte();
-
+#ifdef CONFIG_NAND_DMA_SUPPORT
+		if (readbytes >= nand->pagesize) {
+			nand_access_with_dma(pbuf, nand->pagesize, 1);
+			nand_access_with_dma(poob, nand->oobsize, 1);
+		} else {
+			nand_access_with_dma(pbuf, readbytes, 1);
+		}
+#else
+		if (readbytes >= nand->pagesize) {
+			for (i = 0; i < nand->pagesize; i++)
+				*pbuf++ = read_byte();
+			for (i = 0; i < nand->oobsize; i++)
+				*poob++ = read_byte();
+		} else {
+			for (i = 0; i < readbytes; i++)
+				*pbuf++ = read_byte();
+		}
+#endif
 #ifdef CONFIG_USE_PMECC
 		if (usepmecc)
-			ret = pmecc_process(nand, buffer);
+			ret = pmecc_process(nand, buffer, poob);
 #endif
 	}
 
@@ -890,6 +1179,75 @@ static int nand_read_sector(struct nand_info *nand,
 	return ret;
 }
 #endif /* #ifdef CONFIG_NANDFLASH_SMALL_BLOCKS */
+#ifdef CONFIG_FAST_BOOT
+static int nand_write_sector(struct nand_info *nand,
+				unsigned int row_address,
+				unsigned char *buffer)
+{
+	unsigned int i, j;
+	int ret = 0;
+	unsigned char *pbuf = buffer;
+	unsigned char *pmecc;
+	unsigned char *ecc;
+	unsigned char ecctab[PMECC_MAX_PMECCSIZE];
+	unsigned int nb_sectors_per_page, ecc_bytes_per_sector;
+
+	nand_cs_enable();
+	nand->command(CMD_WRITE_1);
+	write_column_address(nand, 0);
+	write_row_address(nand, row_address);
+
+#ifdef CONFIG_USE_PMECC
+	pmecc_enable(1);
+#endif
+
+#ifdef CONFIG_NAND_DMA_SUPPORT
+	nand_access_with_dma(pbuf, nand->pagesize, 0);
+#else
+	/* Write loop */
+	if (nand->buswidth) {
+		for (i = 0; i < nand->pagesize / 2; i++) {
+			write_word(*(unsigned short *)pbuf);
+			pbuf += 2;
+		}
+	} else {
+		for (i = 0; i < nand->pagesize; i++)
+			write_byte(*pbuf++);
+	}
+#endif
+	/* Send the Random_data_input command (RANDOM_DATA_INPUT) =>  ecc start address */
+	nand->command(CMD_READ_R);
+	write_column_address(nand, nand->pagesize + nand->ecclayout->eccpos[0]);
+
+	pmecc_wait_ready();
+	ecc = ecctab;
+	nb_sectors_per_page = pmecc_get_sectors_per_page();
+	ecc_bytes_per_sector = get_pmecc_bytes(nand->ecc_sector_size, nand->ecc_err_bits);
+	for (i = 0; i < nb_sectors_per_page; i++) {
+		pmecc = (unsigned char *)PMECC_SECTOR_ECC(i);
+		/* Read all EEC registers for this page */
+		for (j = 0; j < ecc_bytes_per_sector; j++)
+			*ecc++ = *pmecc++;
+	}
+
+	ecc = ecctab;
+	if (nand->buswidth) {
+		for (i = 0; i < nand->ecclayout->eccbytes / 2; i++) {
+			write_word(*(unsigned short *)ecc);
+			ecc += 2;
+		}
+	} else {
+		for (i = 0; i < nand->ecclayout->eccbytes; i++)
+			write_byte(*ecc++);
+	}
+	nand->command(CMD_WRITE_2);
+	nand_wait_ready();
+
+	nand_cs_disable();
+
+	return ret;
+}
+#endif
 
 static int nand_check_badblock(struct nand_info *nand,
 				unsigned int block,
@@ -904,7 +1262,7 @@ static int nand_check_badblock(struct nand_info *nand,
 	 */
 	for (page = 0; page < 2; page++) {
 		nand_read_sector(nand, row_address + page, buffer, ZONE_INFO);
-		if (*(buffer + nand->pagesize + nand->ecclayout->badblockpos)
+		if (*(buffer + nand->ecclayout->badblockpos)
 			!= 0xff)
 			return -1;
 	}
@@ -1061,6 +1419,7 @@ static int nand_loadimage(struct nand_info *nand,
 
 		/* read pages of a block */
 		for (page = start_page; page < end_page; page++) {
+
 			ret = nand_read_page(nand, block, page,
 						ZONE_DATA, buffer);
 			if (ret)
@@ -1128,6 +1487,11 @@ int load_nandflash(struct image_info *image)
 	dbg_info("NAND: Using Software ECC\n");
 #endif
 
+#ifdef CONFIG_FAST_BOOT
+	if (nandflash_fast_boot(&nand, image))
+		return 0;
+#endif
+
 #if defined(CONFIG_LOAD_LINUX) || defined(CONFIG_LOAD_ANDROID)
 	int length = update_image_length(&nand,
 				image->offset, image->dest, KERNEL_IMAGE);
@@ -1163,3 +1527,70 @@ int load_nandflash(struct image_info *image)
 
 	return 0;
  }
+
+int nand_flash_read(struct nand_info *nand, unsigned int address, unsigned int size, void *buf)
+{
+	return  nand_loadimage(nand, address, size, (unsigned char *) buf);
+
+}
+
+#ifdef CONFIG_FAST_BOOT
+int nand_flash_write(struct nand_info *nand, unsigned int address, unsigned int length,
+	const void *buf)
+{
+	unsigned char *buffer = (unsigned char *)buf;
+	unsigned int writesize;
+	unsigned int block = 0;
+	unsigned int page;
+	unsigned int start_page = 0;
+	unsigned int end_page;
+	unsigned int numpages = 0;
+	unsigned int offsetpage = 0;
+	unsigned int block_remaining = nand->blocksize
+				       - mod(address, nand->blocksize);
+	unsigned int oob[NAND_MAX_PAGE_SPARE_SIZE];
+	int ret;
+
+	division(address, nand->blocksize, &block, &start_page);
+	start_page = div(start_page, nand->pagesize);
+
+	while (length > 0) {
+		/* write a buffer corresponding to a block */
+		if (length < block_remaining)
+			writesize = length;
+		else
+			writesize = block_remaining;
+
+		/* adjust the number of pages to write */
+		division(writesize, nand->pagesize, &numpages, &offsetpage);
+		if (offsetpage)
+			numpages++;
+
+		end_page = start_page + numpages;
+
+		while (1) {
+			if (nand_check_badblock(nand,
+					block, (unsigned char *)oob) != 0) {
+				block++;
+				dbg_info("NAND: Bad block: #%x\n", block);
+			} else
+				break;
+		}
+
+		/* write pages of a block */
+		for (page = start_page; page < end_page; page++) {
+			ret = nand_write_sector(nand, block * nand->pages_block + page, buffer);
+			if (ret)
+				return -1;
+			buffer += nand->pagesize;
+		}
+		length -= writesize;
+
+		block++;
+		start_page = 0;
+		block_remaining = nand->blocksize;
+	}
+
+	return 0;
+}
+#endif

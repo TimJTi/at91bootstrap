@@ -156,10 +156,10 @@ config QSPI_IOSET
 
 config AT91_QSPI_OCTAL
 	bool "AT91 QSPI instance with Octal Serial Peripheral Interface"
-	depends on SAMA7G5
+	depends on SAMA7G5 || SAM9X7 || SAMA7D65
 	default n
 	help
-	  Should be selected by SAMA7G5 QSPI0
+	  Should be selected by SAMA7G5 or SAM9X7 QSPI0
 
 config QSPI_4B_OPCODES
 	bool "Quad SPI NOR flash memory is >16MiB (>128Mib)"
@@ -168,8 +168,24 @@ config QSPI_4B_OPCODES
 	  Should be selected when the size of SPI NOR flash memory is above
 	  16MiB (128Mib).
 
+config QSPI_OCTAL_IO
+	bool "Enable Octa I/O"
+	help
+	  Enable Octa I/O mode, if octaflash doesn't support SFDP.
+
+config QSPI_DTR_ENABLE
+	bool "Enable DTR (double data rate)"
+	default n
+	help
+	  Used to enable the Double Data Rate mode
+
 config QSPI_XIP
 	bool "eXecute In Place"
 	default n
+
+config QSPI_DMA_SUPPORT
+	bool "Support QSPI DMA transfer"
+	default n
+	depends on XDMAC
 
 endmenu

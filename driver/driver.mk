@@ -59,6 +59,10 @@ ifeq ($(CONFIG_QSPI), y)
 COBJS-y				+= $(DRIVERS_SRC)/at91-qspi/qspi-common.o
 ifeq ($(CONFIG_SAMA7G5), y)
 COBJS-y				+= $(DRIVERS_SRC)/at91-qspi/qspi-sama7g5.o
+else ifeq ($(CONFIG_SAMA7D65), y)
+COBJS-y				+= $(DRIVERS_SRC)/at91-qspi/qspi-sama7g5.o
+else ifeq ($(CONFIG_SAM9X7), y)
+COBJS-y				+= $(DRIVERS_SRC)/at91-qspi/qspi-sama7g5.o
 else
 COBJS-y				+= $(DRIVERS_SRC)/at91-qspi/qspi.o
 endif
@@ -111,3 +115,5 @@ COBJS-$(CONFIG_SFRBU)		+= $(DRIVERS_SRC)/sfrbu.o
 
 COBJS-$(CONFIG_CACHES)		+= $(DRIVERS_SRC)/l1cache.o
 COBJS-$(CONFIG_MMU)		+= $(DRIVERS_SRC)/mmu.o
+COBJS-$(CONFIG_XDMAC)	+= $(DRIVERS_SRC)/at91_xdmac.o
+COBJS-$(CONFIG_FAST_BOOT)	+= $(DRIVERS_SRC)/fast_boot_init.o

@@ -130,7 +130,11 @@ static int qspi_set_ifr_width(const struct spi_flash_command *cmd,
 	case SFLASH_PROTO_4_4_4:
 		*ifr |= QSPI_IFR_WIDTH_QUAD_CMD;
 		break;
-
+#ifdef QSPI_IFR_DDREN
+	case SFLASH_PROTO_1_4D_4D:
+		*ifr |= QSPI_IFR_WIDTH_QUAD_IO | QSPI_IFR_DDREN;
+		break;
+#endif
 	default:
 		return -1;
 	}
@@ -275,10 +279,10 @@ static int qspi_exec(void *priv, const struct spi_flash_command *cmd)
 	/* Stop here for Continuous Read. */
 	if (cmd->tx_data)
 		/* Write data. */
-		memcpy(qspi->mem + offset, cmd->tx_data, cmd->data_len);
+		qspi_memcpy(qspi->mem + offset, cmd->tx_data, cmd->data_len, false);
 	else if (cmd->rx_data)
 		/* Read data. */
-		memcpy(cmd->rx_data, qspi->mem + offset, cmd->data_len);
+		qspi_memcpy(cmd->rx_data, qspi->mem + offset, cmd->data_len, false);
 	else
 		/* Stop here for continuous read */
 		return 0;

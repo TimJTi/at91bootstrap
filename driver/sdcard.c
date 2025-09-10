@@ -13,6 +13,11 @@
 
 #include "debug.h"
 
+#ifdef CONFIG_FAST_BOOT
+#include "fast_boot.h"
+#include "media.h"
+#endif
+
 #define CHUNK_SIZE	0x40000
 
 static int sdcard_loadimage(char *filename, BYTE *dest)
@@ -98,19 +103,31 @@ int load_sdcard(struct image_info *image)
 	FATFS	fs;
 	FRESULT	fret;
 	int	ret;
+	static bool initialized = false;
 
+	if (!initialized) {
 #ifdef CONFIG_AT91_MCI
 #if defined(CONFIG_AT91_MCI0)
-	at91_mci0_hw_init();
+		at91_mci0_hw_init();
 #elif defined(CONFIG_AT91_MCI1)
-	at91_mci1_hw_init();
+		at91_mci1_hw_init();
 #elif defined(CONFIG_AT91_MCI2)
-	at91_mci2_hw_init();
+		at91_mci2_hw_init();
 #endif
 #endif
 
 #ifdef CONFIG_SDHC
-	at91_sdhc_hw_init();
+		at91_sdhc_hw_init();
+#endif
+		initialized = true;
+	}
+#ifdef CONFIG_FAST_BOOT
+	if (sdcard_initialize()) {
+		dbg_info("Sdcard initialization failed!\n");
+		return 0;
+	}
+	if (sdcard_fast_boot(image))
+		return 0;
 #endif
 
 	/* mount fs */

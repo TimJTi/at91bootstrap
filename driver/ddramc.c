@@ -77,6 +77,23 @@ static void ddram_reg_config(struct ddramc_register *ddramc_config)
 #else
 	#error "No CLK setting defined"
 #endif
+#elif defined(CONFIG_DDR_W632GU6NB12I)
+/* DDR3L(W632GU6NB12I = 16 Mbit x 16 x 8 banks), total 2Gbit on SAM9X75D2G */
+	type = AT91C_DDRC2_MD_DDR3_SDRAM;
+	dbw = AT91C_DDRC2_DBW_16_BITS;
+	col = AT91C_DDRC2_NC_DDR10_SDR9;
+	row = AT91C_DDRC2_NR_14;
+	cas = AT91C_DDRC2_CAS_5;
+	bank = AT91C_DDRC2_NB_BANKS_8;
+#if defined(CONFIG_BUS_SPEED_200MHZ)
+	/* Refresh Timer is (64ms / 8k) * 116MHz = 1562(0x61a) */
+	ddramc_config->rtr = 0x61a;
+#elif defined(CONFIG_BUS_SPEED_266MHZ)
+	/* Refresh Timer is (64ms / 8k) * 116MHz = 2078(0x81e) */
+	ddramc_config->rtr = 0x81e;
+#else
+	#error "No CLK setting defined"
+#endif
 	/*
 	 * According to the sam9x7 datasheet and the following values:
 	 * T Sens = 0.75%/C, V Sens = 0.2%/mV, T driftrate = 1C/sec and V driftrate = 15 mV/s
@@ -85,6 +102,45 @@ static void ddram_reg_config(struct ddramc_register *ddramc_config)
 	 * ZQCS period is 1.5 / ((0.75 x 1) + (0.2 x 15)) = 0.4s
 	 * If tref is 7.8us, we have: 400000 / 7.8 = 51282(0xC852)
 	 */
+	ddramc_config->cal_mr4r = AT91C_DDRC2_COUNT_CAL(0xC852);
+	ddramc_config->tim_calr = AT91C_DDRC2_ZQCS(64);
+
+#elif defined(CONFIG_DDR_W631GU6NB12I)
+/* DDR3L(W631GU6NG = 8 Mbit x 16 x 8 banks), total 1Gbit on SAM9X75 SIP */
+	type = AT91C_DDRC2_MD_DDR3_SDRAM;
+	dbw = AT91C_DDRC2_DBW_16_BITS;
+	col = AT91C_DDRC2_NC_DDR10_SDR9;
+	row = AT91C_DDRC2_NR_13;
+	cas = AT91C_DDRC2_CAS_5;
+	bank = AT91C_DDRC2_NB_BANKS_8;
+#if defined(CONFIG_BUS_SPEED_200MHZ)
+	/* Refresh Timer is (64ms / 8k) * 116MHz = 1562(0x61a) */
+	ddramc_config->rtr = 0x61a;
+#elif defined(CONFIG_BUS_SPEED_266MHZ)
+	/* Refresh Timer is (64ms / 8k) * 116MHz = 2078(0x81e) */
+	ddramc_config->rtr = 0x81e;
+#else
+	#error "No CLK setting defined"
+#endif
+	ddramc_config->cal_mr4r = AT91C_DDRC2_COUNT_CAL(0xC852);
+	ddramc_config->tim_calr = AT91C_DDRC2_ZQCS(64);
+#elif defined(CONFIG_DDR_W9751G6NB)
+/* DDR2(W9751G6NB = 8 Mbit x 16 x 4 banks), total 512M bit on SAM9X75 SIP */
+	type = AT91C_DDRC2_MD_DDR2_SDRAM;
+	dbw = AT91C_DDRC2_DBW_16_BITS;
+	col = AT91C_DDRC2_NC_DDR10_SDR9;
+	row = AT91C_DDRC2_NR_13;
+	cas = AT91C_DDRC2_CAS_3;
+	bank = AT91C_DDRC2_NB_BANKS_4;
+#if defined(CONFIG_BUS_SPEED_200MHZ)
+	/* Refresh Timer is (64ms / 8k) * 116MHz = 1562(0x61a) */
+	ddramc_config->rtr = 0x61a;
+#elif defined(CONFIG_BUS_SPEED_266MHZ)
+	/* Refresh Timer is (64ms / 8k) * 116MHz = 2078(0x81e) */
+	ddramc_config->rtr = 0x81e;
+#else
+	#error "No CLK setting defined"
+#endif
 	ddramc_config->cal_mr4r = AT91C_DDRC2_COUNT_CAL(0xC852);
 	ddramc_config->tim_calr = AT91C_DDRC2_ZQCS(64);
 #elif defined(CONFIG_DDR_W632GU6MB)
@@ -172,6 +228,19 @@ static void ddram_reg_config(struct ddramc_register *ddramc_config)
 	type = AT91C_DDRC2_MD_LPDDR2_SDRAM;
 	dbw = AT91C_DDRC2_DBW_32_BITS;
 	col = AT91C_DDRC2_NC_DDR9_SDR8;
+	row = AT91C_DDRC2_NR_14;
+	cas = AT91C_DDRC2_CAS_3;
+	bank = AT91C_DDRC2_NB_BANKS_8;
+	ddramc_config->rtr = AT91C_DDRC2_ENABLE_ADJ_REF | 0x27f;
+	ddramc_config->cal_mr4r = AT91C_DDRC2_COUNT_CAL(0xFFFE) |
+				   AT91C_DDRC2_MR4R(0xFFFE);
+	ddramc_config->tim_calr = AT91C_DDRC2_ZQCS(15);
+	ddramc_config->lpddr2_lpr = AT91C_LPDDRC2_DS(0x03);
+#elif defined(CONFIG_DDR_AS4C128M32MD2A)
+/* LPDDR2 (AS4C128M32MD2A = 16 Mwords x 8 Banks x 32 bits), total 4 Gbit on the SAMA5D29-Curiosity */
+	type = AT91C_DDRC2_MD_LPDDR2_SDRAM;
+	dbw = AT91C_DDRC2_DBW_32_BITS;
+	col = AT91C_DDRC2_NC_DDR10_SDR9;
 	row = AT91C_DDRC2_NR_14;
 	cas = AT91C_DDRC2_CAS_3;
 	bank = AT91C_DDRC2_NB_BANKS_8;
@@ -743,7 +812,7 @@ static unsigned int read_ddramc(unsigned int address, unsigned int offset)
 	return readl(address + offset);
 }
 
-#if defined(CONFIG_DDR3) || \
+#if defined(CONFIG_DDR2) || defined(CONFIG_DDR3) ||\
     (defined(CONFIG_SAMA5D2) && defined(CONFIG_LPDDR2))
 #undef DEBUG_BKP_SR_INIT
 
@@ -834,7 +903,7 @@ void ddr3_lpddr2_sdram_bkp_init(unsigned int base_address,
 static int ddramc_decodtype_is_seq(unsigned int ddramc_cr)
 {
 #if defined(CONFIG_SAMA5D3X) || defined(CONFIG_SAMA5D4) \
-	|| defined(CONFIG_SAMA5D2) || defined(CONFIG_SAM9X60)
+	|| defined(CONFIG_SAMA5D2) || defined(CONFIG_SAM9X60) || defined(CONFIG_SAM9X7)
 	if (ddramc_cr & AT91C_DDRC2_DECOD_INTERLEAVED)
 		return 0;
 #endif
@@ -847,6 +916,12 @@ int ddr2_sdram_initialize(unsigned int base_address,
 {
 	unsigned int ba_offset;
 	unsigned int cr = 0;
+
+	if (backup_resume()) {
+		ddr3_lpddr2_sdram_bkp_init(base_address, ram_address,
+					   ddramc_config);
+		return 0;
+	}
 
 	/* compute BA[] offset according to CR configuration */
 	ba_offset = (ddramc_config->cr & AT91C_DDRC2_NC) + 9;

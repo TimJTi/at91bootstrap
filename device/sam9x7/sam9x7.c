@@ -24,9 +24,14 @@
 #include "flexcom.h"
 #include "board.h"
 #include "led.h"
+#include "nand.h"
 
+#ifdef CONFIG_MMU
+#include "mmu_cp15.h"
+#endif
 __attribute__((weak)) void wilc_pwrseq(void);
 __attribute__((weak)) void at91_can_stdby_dis(void);
+__attribute__((weak)) void at91_rio0_select(void);
 
 #define PLLA_DIV 0
 #define PLLA_COUNT 0x3f
@@ -317,7 +322,7 @@ void hw_init(void)
 #endif
 
 #if defined(CONFIG_DDR3)
-	reg = SFR_CAL1_TEST | SFR_CAL1_CALN(0x6) | SFR_CAL1_CALP(0x8);
+	reg = SFR_CAL1_TEST | SFR_CAL1_CALN(0x6) | SFR_CAL1_CALP(0x2);
 	writel(reg, AT91C_BASE_SFR + SFR_CAL1);
 #elif defined(CONFIG_DDR2)
 	reg = SFR_CAL1_TEST | SFR_CAL1_CALN(0x4) | SFR_CAL1_CALP(0x9);
@@ -333,12 +338,41 @@ void hw_init(void)
 	ddram_init();
 #endif
 
+#ifdef CONFIG_BOARD_QUIRK_SAM9X75_CURIOSITY
+	at91_rio0_select();
+#endif
+
 #ifdef CONFIG_BOARD_QUIRK_SAM9X75_EB
 	/* Perform the WILC initialization sequence */
 	wilc_pwrseq();
 	at91_can_stdby_dis();
 #endif
 }
+
+#ifdef CONFIG_DATAFLASH
+
+#if defined(CONFIG_AT91_QSPI_OCTAL)
+void at91_qspi_hw_init(void)
+{
+	const struct pio_desc qspi_pins[] = {
+		{"QSPI0_SCK", AT91C_PIN_PB(19), 0, PIO_DEFAULT, PIO_PERIPH_A},
+		{"QSPI0_CS",  AT91C_PIN_PB(20), 0, PIO_DEFAULT, PIO_PERIPH_A},
+		{"QSPI0_IO0", AT91C_PIN_PB(21), 0, PIO_DEFAULT, PIO_PERIPH_A},
+		{"QSPI0_IO1", AT91C_PIN_PB(22), 0, PIO_DEFAULT, PIO_PERIPH_A},
+		{"QSPI0_IO2", AT91C_PIN_PB(23), 0, PIO_DEFAULT, PIO_PERIPH_A},
+		{"QSPI0_IO3", AT91C_PIN_PB(24), 0, PIO_DEFAULT, PIO_PERIPH_A},
+		{"QSPI0_IO4", AT91C_PIN_PB(26), 0, PIO_DEFAULT, PIO_PERIPH_A},
+		{"QSPI0_IO5", AT91C_PIN_PB(15), 0, PIO_DEFAULT, PIO_PERIPH_A},
+		{"QSPI0_IO6", AT91C_PIN_PB(16), 0, PIO_DEFAULT, PIO_PERIPH_A},
+		{"QSPI0_IO7", AT91C_PIN_PB(17), 0, PIO_DEFAULT, PIO_PERIPH_A},
+		{"QSPI0_DQS", AT91C_PIN_PB(18), 0, PIO_DEFAULT, PIO_PERIPH_A},
+		{(char *)0, 0, 0, PIO_DEFAULT, PIO_PERIPH_A},
+	};
+	pio_configure(qspi_pins);
+}
+#endif  /* #ifdef CONFIG_AT91_QSPI_OCTAL */
+
+#endif	/* #ifdef CONFIG_DATAFLASH */
 
 #ifdef CONFIG_SDCARD
 #ifdef CONFIG_OF_LIBFDT
@@ -354,7 +388,7 @@ void at91_sdhc_hw_init(void)
 {
 #ifdef CONFIG_SDHC0
 	const struct pio_desc sdmmc_pins[] = {
-#ifdef CONFIG_BOARD_QUIRK_SAM9X75_EB
+#if defined(CONFIG_BOARD_QUIRK_SAM9X75_EB) || defined(CONFIG_BOARD_QUIRK_SAM9X75_CURIOSITY)
 		{"SDMMC0_CMD",	AT91C_PIN_PA(1), 0, PIO_DRVSTR_HI | PIO_SLEWR_CTRL, PIO_PERIPH_A},
 		{"SDMMC0_CK",	AT91C_PIN_PA(2), 0, PIO_DRVSTR_HI | PIO_SLEWR_CTRL, PIO_PERIPH_A},
 		{"SDMMC0_DAT0",	AT91C_PIN_PA(0), 0, PIO_DRVSTR_HI | PIO_SLEWR_CTRL, PIO_PERIPH_A},
@@ -437,17 +471,133 @@ void nandflash_hw_init(void)
 	reg &= ~AT91C_EBI_DRV;
 	writel(reg, AT91C_BASE_SFR + SFR_CCFG_EBICSA);
 
-	/* Configure SMC CS3 for NAND */
-	writel(AT91C_SMC_NWESETUP_(6), AT91C_BASE_SMC + SMC_SETUP2);
+	nandflash_set_smc_timing(TIMING_MODE_0);
+}
 
-	writel(AT91C_SMC_NWEPULSE_(12) | AT91C_SMC_NCS_WRPULSE_(22) |
-	       AT91C_SMC_NRDPULSE_(12) | AT91C_SMC_NCS_RDPULSE_(22),
-	       AT91C_BASE_SMC + SMC_PULSE2);
-
-	writel(AT91C_SMC_NWECYCLE_(22) | AT91C_SMC_NRDCYCLE_(22),
-	       AT91C_BASE_SMC + SMC_CYCLE2);
-
-	writel(AT91C_SMC_READMODE | AT91C_SMC_WRITEMODE | AT91C_SMC_TDFEN |
-	       AT91_SMC_TDF_(17), AT91C_BASE_SMC + SMC_CTRL2);
+void nandflash_set_smc_timing(unsigned int timing_mode)
+{
+	/* Configure SMC CS2 for NAND */
+	nandflash_smc_conf(timing_mode, 2);
 }
 #endif /* #ifdef CONFIG_NANDFLASH */
+
+#ifdef CONFIG_MMU
+void mmu_tlb_init(unsigned int *tlb)
+{
+	unsigned int addr;
+
+	/* Reset table entries */
+	for (addr = 0; addr < 4096; addr++)
+		tlb[addr] = 0;
+
+	/* 0x00000000: SRAM (Remapped) */
+	tlb[0x000] = TTB_SECT_ADDR(0x00000000)
+	           | TTB_SECT_AP_FULL_ACCESS
+	           | TTB_SECT_DOMAIN(0xf)
+	           | TTB_SECT_SHAREABLE_DEVICE
+	           | TTB_SECT_SBO
+	           | TTB_TYPE_SECT;
+
+	/* 0x00100000: ROM */
+	tlb[0x001] = TTB_SECT_ADDR(0x00100000)
+	           | TTB_SECT_AP_FULL_ACCESS
+	           | TTB_SECT_DOMAIN(0xf)
+	           | TTB_SECT_CACHEABLE_WB
+	           | TTB_SECT_SBO
+	           | TTB_TYPE_SECT;
+
+	/* 0x00300000: SRAM0 */
+	tlb[0x003] = TTB_SECT_ADDR(0x00300000)
+	           | TTB_SECT_AP_FULL_ACCESS
+	           | TTB_SECT_DOMAIN(0xf)
+			   | TTB_SECT_CACHEABLE_WB
+	           | TTB_SECT_SBO
+	           | TTB_TYPE_SECT;
+
+	/* 0x00400000: SRAM1 */
+	tlb[0x004] = TTB_SECT_ADDR(0x00400000)
+	           | TTB_SECT_AP_FULL_ACCESS
+	           | TTB_SECT_DOMAIN(0xf)
+	           | TTB_SECT_SHAREABLE_DEVICE
+	           | TTB_SECT_SBO
+	           | TTB_TYPE_SECT;
+
+	/* 0x10000000: EBI Chip Select 0 */
+	for (addr = 0x100; addr < 0x200; addr++)
+		tlb[addr] = TTB_SECT_ADDR(addr << 20)
+	                  | TTB_SECT_AP_FULL_ACCESS
+	                  | TTB_SECT_DOMAIN(0xf)
+	                  | TTB_SECT_STRONGLY_ORDERED
+	                  | TTB_SECT_SBO
+	                  | TTB_TYPE_SECT;
+
+	/* 0x20000000: EBI Chip Select 1 / DDR CS */
+	for (addr = 0x200; addr < 0x300; addr++)
+		tlb[addr] = TTB_SECT_ADDR(addr << 20)
+	                  | TTB_SECT_AP_FULL_ACCESS
+	                  | TTB_SECT_DOMAIN(0xf)
+	                  | TTB_SECT_CACHEABLE_WB
+	                  | TTB_SECT_SBO
+	                  | TTB_TYPE_SECT;
+
+	/* 0x30000000: EBI Chip Select 2 */
+	for (addr = 0x300; addr < 0x400; addr++)
+		tlb[addr] = TTB_SECT_ADDR(addr << 20)
+	                  | TTB_SECT_AP_FULL_ACCESS
+	                  | TTB_SECT_DOMAIN(0xf)
+	                  | TTB_SECT_STRONGLY_ORDERED
+	                  | TTB_SECT_SBO
+	                  | TTB_TYPE_SECT;
+
+	/* 0x40000000: EBI Chip Select 3 */
+	for (addr = 0x400; addr < 0x500; addr++)
+		tlb[addr] = TTB_SECT_ADDR(addr << 20)
+	                  | TTB_SECT_AP_FULL_ACCESS
+	                  | TTB_SECT_DOMAIN(0xf)
+	                  | TTB_SECT_STRONGLY_ORDERED
+	                  | TTB_SECT_SBO
+	                  | TTB_TYPE_SECT;
+
+	/* 0x50000000: EBI Chip Select 4 */
+	for (addr = 0x500; addr < 0x600; addr++)
+		tlb[addr] = TTB_SECT_ADDR(addr << 20)
+	                  | TTB_SECT_AP_FULL_ACCESS
+	                  | TTB_SECT_DOMAIN(0xf)
+	                  | TTB_SECT_STRONGLY_ORDERED
+	                  | TTB_SECT_SBO
+	                  | TTB_TYPE_SECT;
+
+	/* 0x60000000: QSPI MEM */
+	for (addr = 0x600; addr < 0x800; addr++)
+		tlb[addr] = TTB_SECT_ADDR(addr << 20)
+	                  | TTB_SECT_AP_FULL_ACCESS
+	                  | TTB_SECT_DOMAIN(0xf)
+	                  | TTB_SECT_CACHEABLE_WB
+	                  | TTB_SECT_SBO
+	                  | TTB_TYPE_SECT;
+
+	/* 0xf0000000: Peripherals */
+	tlb[0xf00] = TTB_SECT_ADDR(0xf0000000)
+	           | TTB_SECT_AP_FULL_ACCESS
+	           | TTB_SECT_DOMAIN(0xf)
+	           | TTB_SECT_STRONGLY_ORDERED
+	           | TTB_SECT_SBO
+	           | TTB_TYPE_SECT;
+
+	/* 0xf8000000: Peripherals */
+	tlb[0xf80] = TTB_SECT_ADDR(0xf8000000)
+	           | TTB_SECT_AP_FULL_ACCESS
+	           | TTB_SECT_DOMAIN(0xf)
+	           | TTB_SECT_STRONGLY_ORDERED
+	           | TTB_SECT_SBO
+	           | TTB_TYPE_SECT;
+
+	/* 0xfff0000: System Controller */
+	tlb[0xfff] = TTB_SECT_ADDR(0xfff00000)
+	           | TTB_SECT_AP_FULL_ACCESS
+	           | TTB_SECT_DOMAIN(0xf)
+	           | TTB_SECT_STRONGLY_ORDERED
+	           | TTB_SECT_SBO
+	           | TTB_TYPE_SECT;
+}
+#endif /* #ifdef CONFIG_MMU */

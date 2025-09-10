@@ -150,6 +150,40 @@ static int spi_nor_erase(struct spi_flash *flash, size_t offset, size_t len)
 	return ret;
 }
 
+
+#if defined(CONFIG_QSPI_OCTAL_IO)
+static int macronix_octa_enable(struct spi_flash *flash)
+{
+	int rc;
+	struct spi_flash_command cmd;
+	int mode;
+
+	rc = spi_flash_write_enable(flash);
+	if (rc < 0)
+		return rc;
+
+	spi_flash_command_init(&cmd, SFLASH_INST_WRITE_CR2, 4, SFLASH_TYPE_WRITE_REG);
+	cmd.proto = flash->reg_proto;
+	cmd.num_mode_cycles = 0;
+	cmd.data_len = 1;
+	cmd.addr = 0x0;
+#ifdef CONFIG_QSPI_DTR_ENABLE
+	mode = 2;
+#else
+	mode = 1;
+#endif
+	cmd.tx_data = &mode;
+	spi_flash_exec(flash, &cmd);
+	flash->addr_len = 4;
+#ifdef CONFIG_QSPI_DTR_ENABLE
+	flash->reg_proto = SFLASH_PROTO_8D_8D_8D;
+#else
+	flash->reg_proto = SFLASH_PROTO_8_8_8;
+#endif
+	return 0;
+}
+#endif
+
 static int spi_nor_init_params(struct spi_flash *flash,
 			       const struct spi_nor_info *info,
 			       struct spi_flash_parameters *params)
@@ -228,10 +262,22 @@ set_erase_map:
 		break;
 	}
 
+#if defined(CONFIG_QSPI_OCTAL_IO)
+	/* The flash does not support SFDP */
+		switch (spi_flash_get_mfr(flash)) {
+		case SFLASH_MFR_MACRONIX:
+			params->octa_enable = macronix_octa_enable;
+			break;
+
+		default:
+			params->octa_enable = NULL;
+			break;
+		}
+#endif
+
 	/* Override the parameters with data read from SFDP tables. */
 	if (!info || !(info->flags & SNOR_SKIP_SFDP))
 		spi_flash_parse_sfdp(flash, params);
-
 	return 0;
 }
 
@@ -323,13 +369,13 @@ int spi_nor_probe(struct spi_flash *flash,
 	if (!flash->ops)
 		return -1;
 
-	/* Set the SPI mode. */
-	ret = spi_flash_set_mode(flash, CONFIG_SYS_SPI_MODE);
+	/* Set the new baudrate. */
+	ret = spi_flash_set_freq(flash, CONFIG_SYS_SPI_CLOCK);
 	if (ret)
 		return -1;
 
-	/* Set the new baudrate. */
-	ret = spi_flash_set_freq(flash, CONFIG_SYS_SPI_CLOCK);
+	/* Set the SPI mode. */
+	ret = spi_flash_set_mode(flash, CONFIG_SYS_SPI_MODE);
 	if (ret)
 		return -1;
 
@@ -376,7 +422,7 @@ init_params:
 
 	flash->size = params.size;
 	flash->page_size = params.page_size;
-
+	
 	/*
 	 * Configure the SPI memory:
 	 * - select instructions for (Fast) Read, Page Program and Sector Erase.

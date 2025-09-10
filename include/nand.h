@@ -9,10 +9,43 @@
 
 #define MAX_ECC_BYTES		512 /* maximum bytes of ecc */
 
+/* Maximum size of the data area of one page, in bytes. */
+#define NAND_MAX_PAGE_DATA_SIZE          8192
+
+/* Maximum size of the spare area of one page, in bytes. */
+#define NAND_MAX_PAGE_SPARE_SIZE         512
+
+
+#if defined(CONFIG_SAMA5D2) || defined(CONFIG_SAMA5D3) ||\
+    defined(CONFIG_SAMA5D4) || defined(CONFIG_SAMA7G5) ||\
+    defined(CONFIG_SAMA7D65)
+#define SMC_BASE	ATMEL_BASE_SMC
+#else
+#define SMC_BASE	AT91C_BASE_SMC
+#endif
+
 #define TIMING_MODE_0	0
 #define TIMING_MODE_1	1
 #define TIMING_MODE_2	2
 #define TIMING_MODE_3	3
+
+struct nand_timing {
+	unsigned int tCS;
+	unsigned int tRC;
+	unsigned int tREH;
+	unsigned int tRHOH;
+	unsigned int tRP;
+	unsigned int tWC;
+	unsigned int tWH;
+	unsigned int tWP;
+	unsigned int tRHZ;
+	unsigned int tCLR;
+	unsigned int tADL;
+	unsigned int tAR;
+	unsigned int tREA;
+	unsigned int tRR;
+	unsigned int tWB;
+};
 
 struct nand_ooblayout {
 	unsigned short	badblockpos;
@@ -80,7 +113,7 @@ struct nand_info {
 #define CMD_READ_A0			0x00
 #define CMD_READ_A1			0x01
 #define CMD_READ_C			0x50
-
+#define CMD_READ_R			0x85
 #define CMD_WRITE_A			0x00
 #define CMD_WRITE_C			0x50
 
@@ -91,4 +124,11 @@ struct nand_info {
 #define CMD_SET_FEATURE			0xEF
 #define CMD_GET_FEATURE			0xEE
 
+extern void nandflash_smc_conf(unsigned int mode, unsigned int cs);
+#ifdef CONFIG_FAST_BOOT
+extern int nand_flash_read(struct nand_info *nand, unsigned int address, unsigned int length,
+	void *buf);
+extern int nand_flash_write(struct nand_info *nand, unsigned int address, unsigned int length,
+	const void *buf);
+#endif
 #endif /* #ifndef __NAND_H__ */

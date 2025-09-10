@@ -160,6 +160,46 @@ void at91_can_stdby_dis(void)
 }
 #endif
 
+#ifdef CONFIG_BOARD_QUIRK_OURASI_DDR3_EB
+/*
+ * Must set PD8 and PD9 to LOW to enable the can transceivers.
+ * This needs to be replaced later with Linux control over these GPIOs
+ */
+void at91_can_stdby_dis(void)
+{
+	const struct pio_desc can_pins[] = {
+		{"CAN_STDBY", AT91C_PIN_PD(8), 0, PIO_DEFAULT, PIO_OUTPUT},
+		{"CAN_STDBY", AT91C_PIN_PD(9), 0, PIO_DEFAULT, PIO_OUTPUT},
+		{(char *)0, 0, 0, PIO_DEFAULT, PIO_PERIPH_A},
+	};
+
+	pio_configure(can_pins);
+}
+#endif
+
+#ifdef CONFIG_BOARD_QUIRK_SAM9X75_CURIOSITY
+/*
+ * Must set PA15 to HIGH and PA16 to LOW for enabling the RIO-0 module with SDIO
+ * over M.2 connector. Reset the RIO-0 module with PA21 after configuring the
+ * strapping pins to configure from SDIO over M.2 connector. This needs to
+ * be replaced later with Linux control over these GPIOs
+ */
+void at91_rio0_select(void)
+{
+	const struct pio_desc rio0_pins[] = {
+		{"RIO0_STRAP1", AT91C_PIN_PA(15), 1, PIO_DEFAULT, PIO_OUTPUT},
+		{"RIO0_STRAP2", AT91C_PIN_PA(16), 0, PIO_DEFAULT, PIO_OUTPUT},
+		{(char *)0, 0, 0, PIO_DEFAULT, PIO_PERIPH_B},
+	};
+
+	pio_configure(rio0_pins);
+	pio_set_gpio_output(AT91C_PIN_PA(21), 1);
+        pio_set_gpio_output(AT91C_PIN_PA(21), 0);
+        udelay(500);
+        pio_set_gpio_output(AT91C_PIN_PA(21), 1);
+}
+#endif
+
 #ifdef CONFIG_BOARD_QUIRK_SAM9X75_EB
 /*
  * Must set PA24 and PA31 to LOW to enable the can transceivers.

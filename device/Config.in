@@ -5,18 +5,19 @@
 config LINK_ADDR
 	string
 	default "0x200000" if SAMA5D4  || SAMA5D2
-	default "0x100000" if SAMA7G5
+	default "0x100000" if SAMA7G5  || SAMA7D65
 	default "0x300000"
 
 
 config TOP_OF_MEMORY
 	string
 	default "0x310000"	if SAM9X60
-	default "0x308000"	if SAM9X7
+	default "0x310000"	if SAM9X7
 	default "0x310000"	if SAMA5D3X
 	default "0x210000"	if SAMA5D4
 	default "0x210000"	if SAMA5D2
 	default "0x120000"	if SAMA7G5
+	default "0x120000"	if SAMA7D65
 	help
 	    The top address of internal SRAM
 

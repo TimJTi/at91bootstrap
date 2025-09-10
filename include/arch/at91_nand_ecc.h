@@ -97,7 +97,7 @@
 #define PMERRLOC_ELISR		0x020	/* Error Location Interrupt Status Register */
 /* -------- PMERRLOC_ELISR: (Offset: 0x20) Error Location Interrupt Status Register --------*/
 #define PMERRLOC_ELISR_DONE		(0x1)
-#if defined(CONFIG_SAMA5D2) || defined(CONFIG_SAMA7G5)
+#if defined(CONFIG_SAMA5D2) || defined(CONFIG_SAMA7G5) || defined(CONFIG_SAMA7D65)
 #define PMERRLOC_ELISR_ERR_CNT		(0x3f << 8)
 #else
 #define PMERRLOC_ELISR_ERR_CNT		(0x1f << 8)
@@ -106,15 +106,13 @@
 /* 0x24 reserved */
 #define PMERRLOC_SIGMA0		0x028	/* PMECC Error Location SIGMA0 Register */
 
-#if defined(CONFIG_SAMA5D2) || defined(CONFIG_SAMA7G5)
+#if defined(CONFIG_SAMA5D2) || defined(CONFIG_SAMA7G5) || defined(CONFIG_SAMA7D65)
 #define PMERRLOC_EL0		0x0AC	/* PMECC Error Location 0 Register */
 #else
 #define PMERRLOC_EL0		0x08C	/* PMECC Error Location 0 Register */
 #endif
 
-#define	PMERRLOC_VERSION	0x1FC	/* PMECC Version Register */
-#define		AT91C_PMECC_VERSION_SAMA5D4	0x113
-#define		AT91C_PMECC_VERSION_SAMA5D3	0x112
-#define		AT91C_PMECC_VERSION_AT91SAM9X5	0x101
-
+#define PMECC_ECC_OFFSET(n)		(PMECC_ECC + ((n) << 6)) /* PMECC sector offset */
+#define PMECC_SECTOR_ECC(n)		(AT91C_BASE_PMECC + PMECC_ECC_OFFSET(n))
+#define PMECC_MAX_PMECCSIZE		448
 #endif /* #ifndef __AT91_NAND_ECC_H__  */

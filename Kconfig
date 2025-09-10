@@ -4,6 +4,10 @@
 
 mainmenu "AT91 Bootstrap configuration"
 
+config VERSION
+	string
+	option env="VERSION"
+
 config HAVE_DOT_CONFIG
 	bool
 	default y
@@ -48,6 +52,17 @@ config INIT_AND_STOP
 	  required to configure the clocks, PIOs, and memory correctly. Selecting
 	  this option builds a bootstrap image that can be used for this purpose.
 
+config LOAD_AND_STOP
+	bool "Load and stop"
+	select LOAD_SW
+	select BKPT_NOTIFY_DONE
+	---help---
+	  Configure essential peripherals. Load a software image from external media
+	  to RAM, Once the system is configured, trigger a breakpoint, and enter an
+	  infinite loop. Wait there until a debugger takes control. Resort to the
+	  debugger (attached via JTAG) for taking control and possibly loading/running
+	  asoftware application.
+
 endchoice
 
 config BKPT_NOTIFY_DONE
@@ -79,6 +94,7 @@ source "device/sama5d4/Config.in.con"
 source "device/sam9x60/Config.in.con"
 source "device/sam9x7/Config.in.con"
 source "device/sama7g5/Config.in.con"
+source "device/sama7d65/Config.in.con"
 
 config DEBUG
 	bool "Debug Output"
@@ -118,6 +134,17 @@ endmenu
 source "device/Config.in"
 
 source "driver/Config.in.driver"
+
+config DUAL_BOOT_VERSION
+	string "Dual Boot Version Number"
+	depends on SAMA7D65
+	default "0:0"
+	help
+	  Set the version of the binary while generating the bootable image.
+	  Referred as "Bootstrap Version" in the datasheet and used for Dual Boot
+	  or Anti Roll-Back Features.
+	  String has the form <Major Version>:<Minor Version>, for example 4:33 as version 4 major
+	  and 33 minor.
 
 config PROJECT
 	string
@@ -203,6 +230,7 @@ config IMAGE_NAME
 	default "u-boot.bin" if LOAD_UBOOT
 	default "softpack.bin" if LOAD_64KB || LOAD_4MB || LOAD_1MB
 
+source "fast-boot/Config.in.fastboot"
 
 source "device/Config.in.mach"
 
@@ -388,6 +416,12 @@ config BOARD_QUIRK_SAMA5D2_ICP
 config BOARD_QUIRK_SAMA5D2_SIP
 	bool "Quirks for boards using SAMA5D225C-D1M/SAMA5D27C-D1G/SAMA5D28C-D1G"
 
+config BOARD_QUIRK_SAM9X60_CURIOSITY
+	bool "Quirks for SAM9X60_CURIOSITY board"
+	help
+	  Enabling this quirk will adapt the drive strength and slew rate of SDHCI pins
+	  for the SAM9X60 Curiosity board.
+
 config BOARD_QUIRK_SAM9X60_EK
 	bool "Quirks for SAM9X60-EK board"
 
@@ -400,14 +434,20 @@ config BOARD_QUIRK_SAMA7G5_EK
 	  On SAMA7G5 EK board, pin PC15/16 are connected to STBY of the CAN transceivers,
 	  enabling this quirk will put the transceivers to normal mode.
 
-config BOARD_QUIRK_SAM9X60_CURIOSITY
-        bool "Quirks for SAM9X60_CURIOSITY board"
+config BOARD_QUIRK_OURASI_DDR3_EB
+	bool "Quirks for OURASI_DDR3_EB board"
+	help
+	  On OURASI_DDR3_EB board, pin PD8/9 are connected to STBY of the CAN transceivers,
+	  enabling this quirk will put the transceivers to normal mode.
 
 config BOARD_QUIRK_SAM9X75_EB
 	bool "Quirks for SAM9X75_EB board"
 	help
 	  On SAM9X7 EB board, pin PA24/31 are connected to STBY of the CAN transceivers,
 	  enabling this quirk will put the transceivers to normal mode.
+
+config BOARD_QUIRK_SAM9X75_CURIOSITY
+        bool "Quirks for SAM9X75_CURIOSITY board"
 
 endchoice
 
@@ -530,6 +570,50 @@ config LED_B_VALUE
 	default 0
 
 endmenu
+
+config DDR_DRIVER_IMPEDANCE
+	int "DDR output impedance select(ohms)"
+	default 40 if DDR_AS4C256M16D3LC_12BCNTR
+	default 40 if DDR_MT41K512M16HA_125
+	default 40 if DDR_MT47H128M16RT_25E_C
+	default 40 if DDR_W9751G6NB
+	default 48 if DDR_IS43LD16128B_25BLI
+	default 48 if DDR_MT52L256M32D1PF_107
+	default 40 if DDR_MT41K128M16JT_125
+	default 40 if DDR_W631GU6NB12I
+	default 40 if DDR_W632GU6NB12I
+	default 40 if DDR_W634GU6NB12I
+	default 40 if DDR_W638GU6QB12
+	default 40 if DDR_AS4C512M16D3LA_10BIN
+	default 40 if DDR_AS4C128M16D2A_25BAN
+	default 40 if DDR_EM68D16CBQC_18IH
+	default 48 if DDR_W97AH6NBVA1K
+	default 0 if DDR_SET_BY_JEDEC || DDR_SET_BY_TIMING
+	depends on UMCTL2
+	help
+	  The DDR output impedance select ohms: 34,40 for DDR3, 18,24,40,48,60,80 for DDR2 and LPDDR2/3
+
+config DDR_ODT_IMPEDANCE
+	int "DDR on-die impedance select(ohms)"
+	default 60 if DDR_AS4C256M16D3LC_12BCNTR
+	default 60 if DDR_MT41K512M16HA_125
+	default 60 if DDR_MT41K128M16JT_125
+	default 60 if DDR_W631GU6NB12I
+	default 60 if DDR_W632GU6NB12I
+	default 60 if DDR_W634GU6NB12I
+	default 60 if DDR_W638GU6QB12
+	default 60 if DDR_AS4C512M16D3LA_10BIN
+	default 50 if DDR_MT47H128M16RT_25E_C
+	default 50 if DDR_W9751G6NB
+	default 50 if DDR_AS4C128M16D2A_25BAN
+	default 50 if DDR_EM68D16CBQC_18IH
+	default 0 if DDR_IS43LD16128B_25BLI
+	default 0 if DDR_W97AH6NBVA1K
+	default 60 if DDR_MT52L256M32D1PF_107
+	default 0 if DDR_SET_BY_JEDEC || DDR_SET_BY_TIMING
+	depends on UMCTL2
+	help
+	  DDR on-die impedance select ohms:id values: 40, 60, 120 for DDR3, 50, 75, 150 for DDR2
 
 menu "TWI BUS setting"
 
@@ -926,7 +1010,7 @@ config PIT
 config PIT64B
 	bool "64-bit Periodic Interval Timer"
 	default y
-	depends on SAMA7G5
+	depends on SAMA7G5 || SAMA7D65
 	help
 	  Enable 64-bit periodic interval timer.
 
@@ -977,7 +1061,7 @@ config PIO
 
 config PIO_E
 	bool
-	depends on SAMA5D4 || SAMA5D3X || SAMA7G5
+	depends on SAMA5D4 || SAMA5D3X || SAMA7G5 || SAMA7D65
 	default y
 
 config PMC_COMMON
@@ -1002,20 +1086,20 @@ config PMC_V2
 
 config PMC_V3
 	bool "Peripheral management controller support for third version"
-	depends on SAMA7G5
+	depends on SAMA7G5 || SAMA7D65
 	default y
 	help
 	  Enable power management controller support for third version
 config PMC_PERIPH_CLK_SAM9X5
 	bool "PMC peripheral clock control for SAM9X5 SoCs and above"
-	depends on SAMA5D3X || SAMA5D4 || SAMA5D2 || SAM9X60 || SAM9X7 || SAMA7G5
+	depends on SAMA5D3X || SAMA5D4 || SAMA5D2 || SAM9X60 || SAM9X7 || SAMA7G5 || SAMA7D65
 	default y
 	help
 	  Enable peripheral clock control for SAM9X5 SoCs and above
 
 config PMC_GENERIC_CLK
 	bool "PMC generic clock control support"
-	depends on SAMA5D2 || SAM9X60 || SAM9X7 || SAMA7G5
+	depends on SAMA5D2 || SAM9X60 || SAM9X7 || SAMA7G5 || SAMA7D65
 	default y
 	help
 	  Enable generic clock control support
@@ -1036,7 +1120,7 @@ config PMC_PLL_CLK
 
 config PMC_PLL_CLK_SAM9X60
 	bool "PMC PLL clock control support for SAM9X60 SoCs"
-	depends on SAM9X60 || SAM9X7 || SAMA7G5
+	depends on SAM9X60 || SAM9X7 || SAMA7G5 || SAMA7D65
 	default y
 	help
 	  Enable PMC PLL clock control for SAM9X60 SoCs
@@ -1060,7 +1144,7 @@ config PMC_MCK_CLK
 
 config PMC_MCK_CLK_SAMA7G5
 	bool "PMC master clock support for SAMA7G5 SoCs"
-	depends on SAMA7G5
+	depends on SAMA7G5 || SAMA7D65
 	default y
 	help
 	  Enable PMC master clock support for SAMA7G5 SoCs
@@ -1073,9 +1157,22 @@ config SHDWC
 
 config SFRBU
 	bool "SFRBU support"
-	depends on SAMA5D2 || SAMA7G5
+	depends on SAMA5D2 || SAMA7G5 || SAMA7D65
 	default y
 	help
 	  SFRBU support
+
+config BACKUP_VDDIN33
+	bool "Switch backup area to 3v3 power source"
+	depends on SFRBU
+	help
+	  Use VDDIN33 as the source of LDO supply instead of VBAT.
+
+config XDMAC
+	bool "Xdmac support"
+	depends on CPU_HAS_XDMAC
+	default y
+	help
+	  Xdmac support
 endmenu
 

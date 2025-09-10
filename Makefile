@@ -54,7 +54,7 @@ else
 	BUILD_DATE := $(shell $(DATE) "$(DATE_FMT)")
 endif
 endif
-VERSION := 4.0.6
+export VERSION := 4.0.11
 REVISION :=
 ifdef NIX_SHELL
 SCMINFO := $(shell (host-utilities/setlocalversion))
@@ -80,6 +80,11 @@ endif
 # param 2: List of patterns to match
 # return: List of paths to the matching files, relative to and including param 1
 rwildcard=$(foreach d,$(wildcard $(1:=/*)),$(strip $(call rwildcard,$d,$2) $(filter $(subst *,%,$2),$d)))
+
+# Function brief: Check if one LD option is supported by linker being used
+# param 1: LD option to check
+# return: LD option being checked if supported
+ldckflags=$(shell $(LD) $(1) -v >$(DEV_NULL) 2>$(DEV_NULL) && echo "$(1)")
 
 noconfig_targets:= menuconfig defconfig $(CONFIG) oldconfig savedefconfig
 
@@ -150,6 +155,8 @@ SIZE=$(CROSS_COMPILE)size
 OBJCOPY=$(CROSS_COMPILE)objcopy
 OBJDUMP=$(CROSS_COMPILE)objdump
 
+SAM-BA=sam-ba
+
 PROJECT := $(strip $(subst ",,$(CONFIG_PROJECT)))
 IMG_ADDRESS := $(strip $(subst ",,$(CONFIG_IMG_ADDRESS)))
 IMG_SIZE := $(strip $(subst ",,$(CONFIG_IMG_SIZE)))
@@ -162,6 +169,17 @@ IMAGE_NAME:= $(strip $(subst ",,$(CONFIG_IMAGE_NAME)))
 CARD_SUFFIX := $(strip $(subst ",,$(CONFIG_CARD_SUFFIX)))
 LINUX_KERNEL_ARG_STRING := $(strip $(subst ",,$(CONFIG_LINUX_KERNEL_ARG_STRING)))
 LINUX_KERNEL_ARG_STRING_FILE := $(strip $(subst ",,$(CONFIG_LINUX_KERNEL_ARG_STRING_FILE)))
+
+ifeq ($(CONFIG_FAST_BOOT), y)
+LIB_PATH =fast-boot
+ifeq ($(CONFIG_SDCARD), y)
+LIB_NAME =fastboot_sd
+else ifeq ($(CONFIG_QSPI), y)
+LIB_NAME =fastboot_qspi
+else ifeq ($(CONFIG_NANDFLASH), y)
+LIB_NAME =fastboot_nand
+endif
+endif
 
 # Device definitions
 DEVICENAME:=$(strip $(subst ",,$(CONFIG_DEVICENAME)))
@@ -250,7 +268,7 @@ NOSTDINC_FLAGS := -nostdinc -isystem "$(shell "$(CC)" $(EXTRA_CC_ARGS) -print-fi
 CPPFLAGS=$(EXTRA_CC_ARGS) $(NOSTDINC_FLAGS) -ffunction-sections -g -Os -Wall \
 	-mno-unaligned-access \
 	-fno-stack-protector -fno-common -fno-builtin -fno-jump-tables -fno-pie \
-	-I$(INCL) -Iinclude -Ifs/include \
+	-I$(INCL) -Iinclude -Ifs/include -Ifast-boot\
 	-I$(CONFIG)/at91bootstrap-config \
 	-include $(CONFIG)/at91bootstrap-config/autoconf.h \
 	-DAT91BOOTSTRAP_VERSION=\"$(VERSION)$(REV)$(SCMINFO)\" -DCOMPILE_TIME="\"$(BUILD_DATE)\""
@@ -277,6 +295,8 @@ endif
 #  -lc 	   : 	tells the linker to tie in newlib
 #  -lgcc   : 	tells the linker to tie in newlib
 LDFLAGS=$(EXTRA_CC_ARGS) -Map=$(BINDIR)/$(BOOT_NAME).map --cref -static
+LDFLAGS+=-z noexecstack
+LDFLAGS+=$(call ldckflags,--no-warn-rwx-segments)
 LDFLAGS+=-T $(link_script) $(GC_SECTIONS) -Ttext $(LINK_ADDR)
 
 REMOVE_SECTIONS=-R .note -R .comment -R .note.gnu.build-id
@@ -298,6 +318,18 @@ endif
 
 ifeq ($(CONFIG_NANDFLASH)$(CONFIG_USE_PMECC), yy)
 TARGETS+=${AT91BOOTSTRAP}.pmecc
+endif
+
+ifeq ($(CONFIG_SAMA7D65), y)
+ifneq ($(CONFIG_INIT_AND_STOP)$(CONFIG_LOAD_AND_STOP), y)
+# PTI stands for Plain Text Image mode. Format used for a chip configured
+# in Non-Secure mode. See "Bootstrap Image Format" in product's datasheet.
+PTI:=plaintextimg
+DUAL_BOOT_VERSION := $(strip $(subst ",,$(CONFIG_DUAL_BOOT_VERSION)))
+AT91BOOTSTRAP_PTI:=$(BINDIR)/$(BOOT_NAME)-$(PTI).bin
+TARGETS+=${AT91BOOTSTRAP_PTI}
+SYMLINK_PTI_BOOT ?= boot-${PTI}.bin
+endif
 endif
 
 PHONY:=all
@@ -329,7 +361,11 @@ PrintFlags:
 $(AT91BOOTSTRAP): $(OBJS) | $(BINDIR)
 	$(Q)$(MKDIR) -p $(dir $@)
 	@echo "  LD        "$(BOOT_NAME).elf
+ifeq ($(CONFIG_FAST_BOOT), y)
+	$(Q)"$(LD)" $(LDFLAGS) -n -o $(BINDIR)/$(BOOT_NAME).elf $(OBJS) -L$(LIB_PATH) -l$(LIB_NAME)
+else
 	$(Q)"$(LD)" $(LDFLAGS) -n -o $(BINDIR)/$(BOOT_NAME).elf $(OBJS)
+endif
 	$(Q)"$(OBJCOPY)" --strip-all $(REMOVE_SECTIONS) $(BINDIR)/$(BOOT_NAME).elf -O binary $@
 ifdef NIX_SHELL
 	@ln -sf $(BOOT_NAME).elf ${BINDIR}/${SYMLINK_ELF}
@@ -356,6 +392,12 @@ $(BUILDDIR)/%.o : %.S .config
 $(AT91BOOTSTRAP).pmecc: $(BINDIR)/pmecc.tmp $(AT91BOOTSTRAP)
 	$(Q)test -f $< && cat $+ > $@ || rm -f $@
 
+$(AT91BOOTSTRAP_PTI): $(AT91BOOTSTRAP) ChkSamBa
+	$(Q)"$(SAM-BA)" -u gen_image:$(DEVICENAME):$<:$@:$(DUAL_BOOT_VERSION)
+ifdef NIX_SHELL
+	@ln -sf $(BOOT_NAME)-$(PTI).bin ${BINDIR}/${SYMLINK_PTI_BOOT}
+endif
+
 $(BINDIR)/pmecc.tmp: .config | $(BINDIR)
 ifdef NIX_SHELL
 	$(Q)./scripts/addpmecchead.py .config $(BINDIR)
@@ -364,6 +406,30 @@ endif
 PHONY+= bootstrap
 
 rebuild: clean all
+
+ifdef NIX_SHELL
+ChkSamBa:
+	@( $(SAM-BA) -u:test::: > /dev/null 2>&1 ; \
+	  if [ $$? -ne 0 ] ; then \
+		$(SAM-BA) -v ; \
+		if [ $$? -ne 0 ] ; then \
+			echo "[Failed***] SAM-BA tool not installed or not in the \$$PATH"; \
+			exit 2; \
+		else \
+			echo "The '-g' option is deprecated and not supported anymore."; \
+			echo "Please upgrade to sam-ba v3.8 for better functionality."; \
+			echo "[Failed***] SAM-BA tool version not able to generate bootable binary"; \
+			exit 3; \
+		fi \
+	  else \
+		echo "[Succeeded] SAM-BA tool generating bootable binary image available"; \
+	  fi )
+PHONY+= ChkSamBa
+else
+ChkSamBa:
+	$(SHELL) /C nbproject\get_sam_ba_version.bat
+PHONY+= ChkSamBa
+endif
 
 ChkFileSize: $(AT91BOOTSTRAP)
 	@( fsize=`./scripts/get_sram_size.sh $(BINDIR)/$(BOOT_NAME).map`; \

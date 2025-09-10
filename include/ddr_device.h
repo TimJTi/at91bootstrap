@@ -97,6 +97,128 @@ static const struct ddram_timings ddr_ddram_timings = {
 	#error "No CLK setting defined"
 #endif /* Endif of CONFIG_BUS_SPEED_200MHZ */
 
+#elif defined(CONFIG_DDR_W632GU6NB12I)
+/* DDR3L (W632GU6NB12I = 16 Mbit x 16 x 8 banks), total 2Gbit on SAM9X75D2G */
+#if defined(CONFIG_BUS_SPEED_200MHZ)
+	.tras = 7,
+	.trcd = 3,
+	.twr = 3,
+	.trc = 10,
+	.trp = 3,
+	.trrd = 4,
+	.twtr = 4,
+	.tmrd = 4,
+	.trfc = 32,
+	.txsnr = 33,
+	.txsrd = 0,
+	.txp = 10,
+	.txard = 0,
+	.txards = 0,
+	.trpa = 0,
+	.trtp = 4,
+	.tfaw = 8,
+#elif defined(CONFIG_BUS_SPEED_266MHZ)
+	.tras = 10,
+	.trcd = 4,
+	.twr = 4,
+	.trc = 13,
+	.trp = 4,
+	.trrd = 4,
+	.twtr = 4,
+	.tmrd = 4,
+	.trfc = 43,
+	.txsnr = 46,
+	.txsrd = 0,
+	.txp = 10,
+	.txard = 0,
+	.txards = 0,
+	.trpa = 0,
+	.trtp = 4,
+	.tfaw = 11,
+#else
+	#error "No CLK setting defined"
+#endif /* Endif of CONFIG_BUS_SPEED_200MHZ */
+
+#elif defined(CONFIG_DDR_W631GU6NB12I)
+/* DDR3L (W631GU6NB12I = 8 Mbit x 16 x 8 banks), total 1Gbit on SAM9X75-SIP */
+#if defined(CONFIG_BUS_SPEED_200MHZ)
+	.tras = 7,
+	.trcd = 3,
+	.twr = 3,
+	.trc = 10,
+	.trp = 3,
+	.trrd = 4,
+	.twtr = 4,
+	.tmrd = 4,
+	.trfc = 22,
+	.txsnr = 33,
+	.txsrd = 0,
+	.txp = 10,
+	.txard = 0,
+	.txards = 0,
+	.trpa = 0,
+	.trtp = 4,
+	.tfaw = 8,
+#elif defined(CONFIG_BUS_SPEED_266MHZ)
+	.tras = 10,
+	.trcd = 4,
+	.twr = 4,
+	.trc = 13,
+	.trp = 4,
+	.trrd = 4,
+	.twtr = 4,
+	.tmrd = 4,
+	.trfc = 30,
+	.txsnr = 46,
+	.txsrd = 0,
+	.txp = 10,
+	.txard = 0,
+	.txards = 0,
+	.trpa = 0,
+	.trtp = 4,
+	.tfaw = 11,
+#else
+	#error "No CLK setting defined"
+#endif /* Endif of CONFIG_BUS_SPEED_200MHZ */
+#elif defined(CONFIG_DDR_W9751G6NB)
+/* DDR2 (W9751G6NB 512Mbits = 8 Mbits x 16 x 8 banks), total 512 Mbits on the SAM9X70-SIP */
+#if defined(CONFIG_BUS_SPEED_200MHZ)
+	.tras = 9,
+	.trcd = 3,
+	.twr = 3,
+	.trc = 12,
+	.trp = 3,
+	.trrd = 2,
+	.twtr = 2,
+	.tmrd = 2,
+	.trfc = 21,
+	.txsnr = 31,
+	.txsrd = 200,
+	.txp = 2,
+	.txard = 2,
+	.txards = 6,
+	.trpa = 3,
+	.trtp = 2,
+	.tfaw = 8,
+#elif defined(CONFIG_BUS_SPEED_266MHZ)
+	.tras = 12,
+	.trcd = 3,
+	.twr = 4,
+	.trc = 15,
+	.trp = 3,
+	.trrd = 3,
+	.twtr = 2,
+	.tmrd = 2,
+	.trfc = 28,
+	.txsnr = 38,
+	.txsrd = 200,
+	.txp = 2,
+	.txard = 2,
+	.txards = 6,
+	.trpa = 3,
+	.trtp = 2,
+	.tfaw = 10,
+#endif
 #elif defined(CONFIG_DDR_W632GU6MB)
 /* Two DDR3L(W632GU6MB-12 = 16 Mbit x 16 x 8 banks), total 4 Gbit on SAMA5D2 ICP*/
 #if defined(CONFIG_BUS_SPEED_166MHZ)
@@ -240,6 +362,25 @@ static const struct ddram_timings ddr_ddram_timings = {
 	.tfaw = 7,
 #elif defined(CONFIG_DDR_AD220032D)
 /* LPDDR2 (AD220032D = 8 Mwords x 8 Banks x 32 bits), total 2 Gbit in SiP on SAMA5D27-WLSOM-EK */
+	.tras = 7,
+	.trcd = 3,
+	.twr = 4,
+	.trc = 11,
+	.trp = 4,
+	.trrd = 2,
+	.twtr = 2,
+	.tmrd = 5,
+	.trfc = 21,
+	.txsnr = 23,
+	.txsrd = 0,
+	.txp = 2,
+	.txard = 0,
+	.txards = 0,
+	.trpa = 4,
+	.trtp = 2,
+	.tfaw = 10,
+#elif defined(CONFIG_DDR_AS4C128M32MD2A)
+/* LPDDR2 (AS4C128M32MD2A = 16 Mwords x 8 Banks x 32 bits), total 4 Gbit on the SAMA5D29-Curiosity */
 	.tras = 7,
 	.trcd = 3,
 	.twr = 4,

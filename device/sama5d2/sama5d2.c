@@ -485,8 +485,12 @@ void twi_init()
 
 void hw_init(void)
 {
+#ifdef CONFIG_BACKUP_VDDIN33
 	/* Switch backup area to VDDIN33. */
 	sfrbu_select_ba_power_source(true);
+#else
+	sfrbu_auto_ba_power_source();
+#endif
 
 	at91_disable_wdt();
 
@@ -934,6 +938,14 @@ void mmu_tlb_init(unsigned int *tlb)
 	                  | TTB_SECT_AP_FULL_ACCESS
 	                  | TTB_SECT_DOMAIN(0xf)
 	                  | TTB_SECT_EXEC_NEVER
+	                  | TTB_SECT_STRONGLY_ORDERED
+	                  | TTB_TYPE_SECT;
+
+	/* 0xd0000000: QSPI0/1 MEM */
+	for (addr = 0xd00; addr < 0xe00; addr++)
+		tlb[addr] = TTB_SECT_ADDR(addr << 20)
+	                  | TTB_SECT_AP_FULL_ACCESS
+	                  | TTB_SECT_DOMAIN(0xf)
 	                  | TTB_SECT_STRONGLY_ORDERED
 	                  | TTB_TYPE_SECT;
 

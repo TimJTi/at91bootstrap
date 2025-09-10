@@ -193,9 +193,11 @@ struct publ_regs {
 /* DQS Resistor */
 #define PUBL_DXCCR_DQSRES_POS			4
 #define PUBL_DXCCR_DQSRES_688OHM		(1UL << PUBL_DXCCR_DQSRES_POS)
+#define PUBL_DXCCR_DQSRES_500OHM		(4UL << PUBL_DXCCR_DQSRES_POS)
 /* DQS# Resistor */
 #define PUBL_DXCCR_DQSNRES_POS			8
-#define PUBL_DXCCR_DQSNRES_688OHM                (1UL << PUBL_DXCCR_DQSNRES_POS)
+#define PUBL_DXCCR_DQSNRES_688OHM		(1UL << PUBL_DXCCR_DQSNRES_POS)
+#define PUBL_DXCCR_DQSNRES_500OHM		(4UL << PUBL_DXCCR_DQSNRES_POS)
 #define PUBL_DXCCR_DQSNRES_PU			(1UL << PUBL_DXCCR_DQSNRES_POS << 3)
 
 /* -------- PUBL_DSGCR : (PUBL Offset: 0x2C) System General Configuration Register -------- */
@@ -363,6 +365,8 @@ struct publ_regs {
 #define PUBL_MR0_CL_POS				2
 #define PUBL_MR0_CL(v)				(((v) & PUBL_MR0_CL_MASK) \
 						<< PUBL_MR0_CL_POS)
+#define PUBL_MR0_BL				1
+
 #endif
 /* Write Recovery */
 #define PUBL_MR0_WR_MASK			0x7UL
@@ -382,6 +386,8 @@ struct publ_regs {
 #define PUBL_MR0_BL_8				(((3) & PUBL_MR0_BL_MASK) \
 						<< PUBL_MR0_BL_POS)
 #endif
+#define PUBL_MR0_DR_POS				8
+#define PUBL_MR0_DR				(1 << PUBL_MR0_DR_POS)
 
 /* -------- PUBL_MR1 : (PUBL Offset: 0x44) PHY Mode Register 1 -------- */
 /* RTT: On Die termination */
